@@ -18,6 +18,7 @@ pub const FALL_SPEED_DIVE_MAX: f32 = -40.0;
 pub const DIVE_GRAVITY_MULT: f32 = 3.0;
 pub const PLAYER_FLY_SPEED: f32 = 20.0;
 pub const ANIM_TRANSITION_MS: u64 = 20;  // Animation crossfade duration
+pub const MAX_SLOPE_ANGLE: f32 = std::f32::consts::FRAC_PI_4; // 45° max walkable incline
 
 // Double-tap Space to enter Floating state instaead of sing the F key.
 // Window must be long enough to cover the jump apex (~0.8s at JUMP_VELOCITY = 0.8)
@@ -449,11 +450,29 @@ pub fn move_player(
                     &SpatialQueryFilter::from_excluded_entities(vec![entity]),
                 );
                 if let Some(hit) = hit_xz {
-                    // Wall side project velocity onto the wall plane
-                    // v_slide = v - n * dot(v, n)
-                    let wall_normal = hit.normal1;
-                    let slide = horizontal_delta - wall_normal * horizontal_delta.dot(wall_normal);
-                    slide
+                    let n = hit.normal1;
+                    // The front face of a climbable ramp has n.y < 0 (pointing downward).
+                    // |n.y| < sin(MAX_SLOPE_ANGLE) means the top surface is within the
+                    // walkable angle threshold.
+                    let is_slope_face = grounded
+                        && n.y < -f32::EPSILON
+                        && n.y.abs() < MAX_SLOPE_ANGLE.sin();
+                    if is_slope_face {
+                        // Compute the upward rise that matches the slope angle so the
+                        // player climbs smoothly instead of being blocked.
+                        let horiz_len = (n.x * n.x + n.z * n.z).sqrt();
+                        let rise = if horiz_len > 1e-4 {
+                            horizontal_delta.length() * n.y.abs() / horiz_len
+                        } else {
+                            0.0
+                        };
+                        Vec3::new(horizontal_delta.x, rise, horizontal_delta.z)
+                    } else {
+                        // Wall or too-steep surface: slide along it (Y zeroed so walls
+                        // never push the player vertically).
+                        let slide = horizontal_delta - n * horizontal_delta.dot(n);
+                        Vec3::new(slide.x, 0.0, slide.z)
+                    }
                 } else {
                     horizontal_delta
                 }
