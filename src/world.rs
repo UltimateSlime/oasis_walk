@@ -58,7 +58,7 @@ fn box_at(
         MeshMaterial3d(mat),
         Transform::from_translation(pos),
         RigidBody::Static,
-        Collider::cuboid(size.x / 2.0, size.y / 2.0, size.z / 2.0),
+        Collider::cuboid(size.x, size.y, size.z),
     ));
 }
 
@@ -78,7 +78,7 @@ fn cyl_at(
         MeshMaterial3d(mat),
         Transform::from_translation(pos),
         RigidBody::Static,
-        Collider::cylinder(radius, height / 2.0),
+        Collider::cylinder(radius, height ),
     ));
 }
 
@@ -104,7 +104,7 @@ fn ramp_x(
         Transform::from_xyz((x0 + x1) / 2.0, (y0 + y1) / 2.0, z)
             .with_rotation(Quat::from_rotation_z(dy.atan2(dx))),
         RigidBody::Static,
-        Collider::cuboid(len / 2.0, thick / 2.0, width / 2.0),
+        Collider::cuboid(len , thick , width ),
     ));
 }
 

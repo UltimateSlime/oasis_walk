@@ -18,12 +18,21 @@ pub const FALL_SPEED_DIVE_MAX: f32 = -40.0;
 pub const DIVE_GRAVITY_MULT: f32 = 3.0;
 pub const PLAYER_FLY_SPEED: f32 = 20.0;
 pub const ANIM_TRANSITION_MS: u64 = 20;  // Animation crossfade duration
-pub const MAX_SLOPE_ANGLE: f32 = std::f32::consts::FRAC_PI_4; // 45° max walkable incline
 
 // Double-tap Space to enter Floating state instaead of sing the F key.
 // Window must be long enough to cover the jump apex (~0.8s at JUMP_VELOCITY = 0.8)
 pub const DOUBLE_JUMP_WINDOW_SECS: f32 = 1.0;
 pub const FLIGHT_EXIT_WINDOW_SECS: f32 = 1.0;
+
+// Maximum slope angle the player can walk up (45°).
+// Surface with a shallower normal are treated as walkable ramps;
+// steeper surfaces are treated as walls and trigger slide resolution .
+pub const MAX_SLOPE_ANGLE: f32 = std::f32::consts::FRAC_PI_4;
+
+// Maximum height the player can "step up" onto a ramp per frame.
+// NOTE: This must be large enough to cover one frame of slope rise,
+// but small enough to not skip over low ceilings.
+pub const STEP_HEIGHT: f32 = 0.4;
 
 #[derive(Component)]
 pub struct Player;
@@ -437,13 +446,17 @@ pub fn move_player(
     };
 
     // --- Horizontal collision resolution (movement)
+    // NOTE: Slope climbing is handled in two steps:
+    //  1. If the hit suface is walkable (n.y > cos(MAX_SLOPE_ANGLE)), pass through 
+    //      the step-up cast below pulls the player onto the surface.
+    //  2. If it's a wall or too-steep face, slide along it.
     let horizontal_delta = Vec3::new(delta.x, 0.0, delta.z);
     let horizontal_move = if horizontal_delta.length_squared() > 0.0 {
-        match Dir3::new(horizontal_delta){
-            Ok(horizontal_dir) =>{
+        match Dir3::new(horizontal_delta) {
+            Ok(horizontal_dir) => {
                 let hit_xz = spatial_query.cast_shape(
                     &cast_collider,
-                    transform.translation + Vec3::Y*0.1,
+                    transform.translation, // no Y offset - let step-up handle ramps
                     Quat::IDENTITY,
                     horizontal_dir,
                     &ShapeCastConfig::from_max_distance(horizontal_delta.length()),
@@ -451,25 +464,14 @@ pub fn move_player(
                 );
                 if let Some(hit) = hit_xz {
                     let n = hit.normal1;
-                    // The front face of a climbable ramp has n.y < 0 (pointing downward).
-                    // |n.y| < sin(MAX_SLOPE_ANGLE) means the top surface is within the
-                    // walkable angle threshold.
-                    let is_slope_face = grounded
-                        && n.y < -f32::EPSILON
-                        && n.y.abs() < MAX_SLOPE_ANGLE.sin();
-                    if is_slope_face {
-                        // Compute the upward rise that matches the slope angle so the
-                        // player climbs smoothly instead of being blocked.
-                        let horiz_len = (n.x * n.x + n.z * n.z).sqrt();
-                        let rise = if horiz_len > 1e-4 {
-                            horizontal_delta.length() * n.y.abs() / horiz_len
-                        } else {
-                            0.0
-                        };
-                        Vec3::new(horizontal_delta.x, rise, horizontal_delta.z)
+                    // n.y > cos(45°) means the surface normal points mostly upward:
+                    // this is the top face of ramp, not a wall.
+                    if grounded && n.y > MAX_SLOPE_ANGLE.cos() {
+                        // Walkable slope: don't block horizontal movement.
+                        // Step-up cast below will lift the player onto it.
+                        horizontal_delta
                     } else {
-                        // Wall or too-steep surface: slide along it (Y zeroed so walls
-                        // never push the player vertically).
+                        // Wall or too-steep surface: slide along the face.
                         let slide = horizontal_delta - n * horizontal_delta.dot(n);
                         Vec3::new(slide.x, 0.0, slide.z)
                     }
@@ -483,7 +485,31 @@ pub fn move_player(
         Vec3::ZERO
     };
 
-    transform.translation += vertical_move + horizontal_move;
+    // Try
+    let max_step = PLAYER_DASH_SPEED * time.delta_secs() * 10.0;
+
+    // --- Step-up: snap player onto ramp surface after horizontal move
+    // NOTE: Only active while grounded and not jumping. Cast Dwonward from
+    // STEP_HEIGHT above to find the surface the player just walked onto.
+    let step_up = if grounded && !just_jumped {
+        let step_origin = transform.translation + Vec3::Y * STEP_HEIGHT;
+        spatial_query.cast_shape(
+            &cast_collider,
+            step_origin,
+            Quat::IDENTITY,
+            Dir3::NEG_Y,
+            &ShapeCastConfig::from_max_distance(STEP_HEIGHT + 0.05),
+            &SpatialQueryFilter::from_excluded_entities(vec![entity]),
+        ).map(|hit| {
+            // Campute how much to adjust Y so the player sits on the surface.
+            let ground_y = step_origin.y - hit.distance;
+            let diff = ground_y - transform.translation.y;
+            if diff.abs() < max_step { Vec3::new(0.0, diff, 0.0) } else { Vec3::ZERO}
+        }).unwrap_or(Vec3::ZERO)
+    } else {
+        Vec3::ZERO
+    };
+    transform.translation += vertical_move + horizontal_move + step_up;
 
 }
 
