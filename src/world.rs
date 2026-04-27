@@ -179,6 +179,13 @@ fn spawn_east_terrace(
     // Ramp from market level (x=30,y=0) up to platform edge (x=44,y=5)
     ramp_x(commands, meshes, mat.clone(), 30.0, 0.0, 44.0, 5.0, 0.0, 4.0);
 
+    // テスト用スロープ（spawn_worldの末尾あたりに追加）
+    ramp_x(commands, meshes, mat.clone(), 0.0, 0.0, 20.0, 2.0,  20.0, 4.0); // 約6°
+    ramp_x(commands, meshes, mat.clone(), 0.0, 0.0, 20.0, 5.0,  25.0, 4.0); // 約14°
+    ramp_x(commands, meshes, mat.clone(), 0.0, 0.0, 20.0, 10.0, 30.0, 4.0); // 約27°
+    ramp_x(commands, meshes, mat.clone(), 0.0, 0.0, 20.0, 20.0, 35.0, 4.0); // 45°
+    ramp_x(commands, meshes, mat.clone(), 0.0, 0.0, 10.0, 15.0, 40.0, 4.0); // 約56°（登れないはず  
+
     // Residential buildings — base_y = 5.0
     for &(x, z, w, h, d) in &[
         (50.0,  8.0, 6.0, 4.0, 5.0_f32),

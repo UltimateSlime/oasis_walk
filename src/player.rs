@@ -504,7 +504,11 @@ pub fn move_player(
             // Campute how much to adjust Y so the player sits on the surface.
             let ground_y = step_origin.y - hit.distance;
             let diff = ground_y - transform.translation.y;
-            if diff.abs() < max_step { Vec3::new(0.0, diff, 0.0) } else { Vec3::ZERO}
+            if diff.abs() < max_step { 
+                Vec3::new(0.0, diff, 0.0) 
+            } else { 
+                Vec3::ZERO
+            }
         }).unwrap_or(Vec3::ZERO)
     } else {
         Vec3::ZERO
